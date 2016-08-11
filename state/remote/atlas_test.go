@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -244,7 +245,10 @@ func (f *fakeAtlas) Server() *httptest.Server {
 }
 
 func (f *fakeAtlas) CurrentState() *terraform.State {
-	currentState, err := terraform.ReadState(bytes.NewReader(f.state))
+	// we read the state manually here, because terraform amy alter state
+	// during read
+	currentState := &terraform.State{}
+	err := json.Unmarshal(f.state, currentState)
 	if err != nil {
 		f.t.Fatalf("err: %s", err)
 	}
@@ -288,10 +292,15 @@ func (f *fakeAtlas) handler(resp http.ResponseWriter, req *http.Request) {
 		var buf bytes.Buffer
 		buf.ReadFrom(req.Body)
 		sum := md5.Sum(buf.Bytes())
-		state, err := terraform.ReadState(&buf)
+
+		// we read the state manually here, because terraform amy alter state
+		// during read
+		state := &terraform.State{}
+		err := json.Unmarshal(buf.Bytes(), state)
 		if err != nil {
 			f.t.Fatalf("err: %s", err)
 		}
+
 		conflict := f.CurrentSerial() == state.Serial && f.CurrentSum() != sum
 		conflict = conflict || f.alwaysConflict
 		if conflict {
@@ -364,7 +373,7 @@ var testStateSimple = []byte(
                     "value": "bar"
                 }
             },
-            "resources": null
+            "resources": {}
         }
     ]
 }
